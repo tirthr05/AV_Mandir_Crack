@@ -1,38 +1,108 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Private Downloader</title>
+<title>Pro Downloader</title>
+
 <style>
 body {
-  background: linear-gradient(135deg,#141e30,#243b55);
-  color:white;
-  text-align:center;
-  font-family:sans-serif;
+  background: linear-gradient(135deg,#0f2027,#2c5364);
+  font-family: Arial;
+  color: white;
+  text-align: center;
 }
-.container { margin-top:100px; }
+
+.container {
+  margin-top: 80px;
+}
+
 input, select, button {
-  padding:12px;
-  margin:10px;
-  border-radius:10px;
-  border:none;
+  padding: 12px;
+  margin: 10px;
+  border-radius: 12px;
+  border: none;
+  font-size: 16px;
 }
-button { background:#00c6ff; cursor:pointer; }
+
+button {
+  background: #00c6ff;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#progressBar {
+  width: 60%;
+  margin: 20px auto;
+  background: #444;
+  border-radius: 10px;
+}
+
+#progress {
+  height: 20px;
+  width: 0%;
+  background: #00c6ff;
+  border-radius: 10px;
+}
+
+#status {
+  margin-top: 10px;
+}
 </style>
+
+<script>
+function startDownload(e) {
+    e.preventDefault();
+
+    const formData = new FormData(document.getElementById("form"));
+
+    fetch('/x9KfL2pQz/download', {
+        method: 'POST',
+        body: formData
+    });
+
+    let interval = setInterval(() => {
+        fetch('/progress')
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("progress").style.width = data.percent + "%";
+            document.getElementById("status").innerText = data.status;
+
+            if (data.percent >= 100) clearInterval(interval);
+        });
+    }, 1000);
+}
+</script>
+
 </head>
+
 <body>
 <div class="container">
-<h1>🔒 Private Downloader</h1>
 
-<form action="/x9KfL2pQz/download" method="post">
-<input type="text" name="url" placeholder="Paste URL" required><br>
+<h1>🚀 Pro Private Downloader</h1>
+
+<form id="form" onsubmit="startDownload(event)">
+
+<input type="text" name="url" placeholder="Paste YouTube URL" required><br>
 
 <select name="format">
-<option value="mp4">MP4 (Video)</option>
-<option value="mp3">MP3 (Audio)</option>
+  <option value="mp4">Video (MP4)</option>
+  <option value="mp3">Audio (MP3)</option>
 </select><br>
 
-<button>Download</button>
+<select name="quality">
+  <option value="1080">1080p</option>
+  <option value="1440">2K</option>
+  <option value="2160">4K</option>
+</select><br>
+
+<button type="submit">Download</button>
+
 </form>
+
+<div id="progressBar">
+  <div id="progress"></div>
+</div>
+
+<div id="status">Idle</div>
 
 </div>
 </body>
