@@ -1,109 +1,270 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pro Downloader</title>
-
 <style>
-body {
-  background: linear-gradient(135deg,#0f2027,#2c5364);
-  font-family: Arial;
-  color: white;
-  text-align: center;
-}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-.container {
-  margin-top: 80px;
-}
+  body {
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+    font-family: Arial, sans-serif;
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 
-input, select, button {
-  padding: 12px;
-  margin: 10px;
-  border-radius: 12px;
-  border: none;
-  font-size: 16px;
-}
+  .card {
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 24px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+  }
 
-button {
-  background: #00c6ff;
-  font-weight: bold;
-  cursor: pointer;
-}
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 32px;
+    letter-spacing: -0.5px;
+  }
 
-#progressBar {
-  width: 60%;
-  margin: 20px auto;
-  background: #444;
-  border-radius: 10px;
-}
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
 
-#progress {
-  height: 20px;
-  width: 0%;
-  background: #00c6ff;
-  border-radius: 10px;
-}
+  label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    opacity: 0.6;
+  }
 
-#status {
-  margin-top: 10px;
-}
+  input, select {
+    padding: 13px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08);
+    color: white;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+
+  input::placeholder { color: rgba(255,255,255,0.35); }
+  input:focus, select:focus { border-color: #00c6ff; }
+  select option { background: #1a3a4a; color: white; }
+
+  #qualityField { transition: opacity 0.2s; }
+
+  button {
+    width: 100%;
+    padding: 15px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(90deg, #00c6ff, #0072ff);
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.3px;
+  }
+
+  button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .progress-wrap {
+    margin-top: 28px;
+    display: none;
+  }
+
+  .progress-top {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    opacity: 0.75;
+    margin-bottom: 8px;
+  }
+
+  .progress-bar {
+    background: rgba(255,255,255,0.1);
+    border-radius: 100px;
+    height: 10px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00c6ff, #0072ff);
+    border-radius: 100px;
+    transition: width 0.5s ease;
+  }
+
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    opacity: 0.55;
+    margin-top: 8px;
+  }
+
+  #statusText {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 20px;
+  }
+
+  #errorText {
+    text-align: center;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #ff6b6b;
+    min-height: 18px;
+  }
 </style>
+</head>
+<body>
+<div class="card">
+  <h1>🚀 Pro Downloader</h1>
+
+  <form id="form">
+    <div class="field">
+      <label>YouTube URL</label>
+      <input type="text" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
+    </div>
+
+    <div class="field">
+      <label>Format</label>
+      <select name="format" id="formatSelect" onchange="toggleQuality()">
+        <option value="mp4">Video (MP4)</option>
+        <option value="mp3">Audio (MP3)</option>
+      </select>
+    </div>
+
+    <div class="field" id="qualityField">
+      <label>Quality</label>
+      <select name="quality" id="qualitySelect">
+        <option value="360">360p</option>
+        <option value="480">480p</option>
+        <option value="720">720p HD</option>
+        <option value="1080" selected>1080p Full HD</option>
+        <option value="1440">1440p 2K</option>
+        <option value="2160">2160p 4K</option>
+      </select>
+    </div>
+
+    <button type="submit" id="submitBtn">⬇ Download</button>
+  </form>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-top">
+      <span id="statusText">Starting...</span>
+      <span id="percentText">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="meta">
+      <span id="speedText"></span>
+      <span id="etaText"></span>
+    </div>
+  </div>
+
+  <div id="errorText"></div>
+</div>
 
 <script>
-function startDownload(e) {
+  function toggleQuality() {
+    const isMp3 = document.getElementById("formatSelect").value === "mp3";
+    document.getElementById("qualityField").style.opacity = isMp3 ? "0.3" : "1";
+    document.getElementById("qualitySelect").disabled = isMp3;
+  }
+
+  document.getElementById("form").addEventListener("submit", function(e) {
     e.preventDefault();
 
-    const formData = new FormData(document.getElementById("form"));
+    document.getElementById("errorText").innerText = "";
+    document.getElementById("progressFill").style.width = "0%";
+    document.getElementById("percentText").innerText = "0%";
+    document.getElementById("speedText").innerText = "";
+    document.getElementById("etaText").innerText = "";
+    document.getElementById("progressWrap").style.display = "block";
+    document.getElementById("submitBtn").disabled = true;
+    document.getElementById("statusText").innerText = "Starting...";
 
-    fetch('/x9KfL2pQz/download', {
-        method: 'POST',
-        body: formData
-    });
+    const formData = new FormData(this);
 
-    let interval = setInterval(() => {
-        fetch('/progress')
-        .then(res => res.json())
-        .then(data => {
-            document.getElementById("progress").style.width = data.percent + "%";
-            document.getElementById("status").innerText = data.status;
+    fetch('/download', { method: 'POST', body: formData })
+      .then(res => {
+        if (!res.ok) return res.text().then(t => { throw new Error(t); });
+        return res.json();
+      })
+      .then(data => {
+        const sessionId = data.session_id;
+        if (!sessionId) throw new Error("No session ID returned from server.");
 
-            if (data.percent >= 100) clearInterval(interval);
-        });
-    }, 1000);
-}
+        let interval = setInterval(() => {
+          fetch(`/progress/${sessionId}`)
+            .then(r => r.json())
+            .then(d => {
+              const pct = Math.min(d.percent || 0, 100);
+              document.getElementById("progressFill").style.width = pct + "%";
+              document.getElementById("percentText").innerText = pct.toFixed(1) + "%";
+              document.getElementById("statusText").innerText = capitalize(d.status || "");
+              document.getElementById("speedText").innerText = d.speed || "";
+              document.getElementById("etaText").innerText = d.eta ? `ETA: ${d.eta}` : "";
+
+              if (d.status === "done") {
+                clearInterval(interval);
+                document.getElementById("progressFill").style.width = "100%";
+                document.getElementById("percentText").innerText = "100%";
+                document.getElementById("statusText").innerText = "✅ Complete! Saving...";
+                document.getElementById("submitBtn").disabled = false;
+                // Trigger local file download
+                window.location.href = `/file/${sessionId}`;
+              } else if (d.status === "error") {
+                clearInterval(interval);
+                document.getElementById("statusText").innerText = "Failed";
+                document.getElementById("submitBtn").disabled = false;
+                document.getElementById("errorText").innerText = d.error || "Download failed. Check the URL and try again.";
+              }
+            })
+            .catch(() => {
+              clearInterval(interval);
+              document.getElementById("statusText").innerText = "Connection lost";
+              document.getElementById("submitBtn").disabled = false;
+              document.getElementById("errorText").innerText = "Lost connection to server.";
+            });
+        }, 800);
+      })
+      .catch(err => {
+        document.getElementById("progressWrap").style.display = "none";
+        document.getElementById("submitBtn").disabled = false;
+        document.getElementById("errorText").innerText = `Error: ${err.message}`;
+      });
+  });
+
+  function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
 </script>
-
-</head>
-
-<body>
-<div class="container">
-
-<h1>🚀 Pro Private Downloader</h1>
-
-<form id="form" onsubmit="startDownload(event)">
-
-<input type="text" name="url" placeholder="Paste YouTube URL" required><br>
-
-<select name="format">
-  <option value="mp4">Video (MP4)</option>
-  <option value="mp3">Audio (MP3)</option>
-</select><br>
-
-<select name="quality">
-  <option value="1080">1080p</option>
-  <option value="1440">2K</option>
-  <option value="2160">4K</option>
-</select><br>
-
-<button type="submit">Download</button>
-
-</form>
-
-<div id="progressBar">
-  <div id="progress"></div>
-</div>
-
-<div id="status">Idle</div>
-
-</div>
 </body>
 </html>
