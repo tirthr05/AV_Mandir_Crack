@@ -97,14 +97,24 @@ def download():
         'outtmpl': f'{download_dir}/%(title)s.%(ext)s',
         'merge_output_format': 'mp4',
 
-        # ✅ THE FIX — use web_embedded client, bypass bot detection without cookies
+        # ✅ AUTO PO TOKEN — generates fresh token per video, no cookies needed, never expires
         'extractor_args': {
             'youtube': {
-                'player_client': ['web_embedded'],
-            }
+                'player_client': ['web'],
+            },
+            # bgutil POT provider running locally on port 4416
+            'youtubepot-bgutilhttp': {
+                'base_url': ['http://127.0.0.1:4416'],
+            },
         },
 
-        # ✅ Reconnect on drop, important for large files
+        # ✅ Retries
+        'retries': 15,
+        'fragment_retries': 15,
+        'extractor_retries': 10,
+        'skip_unavailable_fragments': True,
+
+        # ✅ Reconnect on stream drop
         'downloader_options': {
             'ffmpeg_args': [
                 '-reconnect', '1',
@@ -113,18 +123,12 @@ def download():
             ]
         },
 
-        # ✅ Retries on failure
-        'retries': 10,
-        'fragment_retries': 10,
-        'extractor_retries': 5,
-        'skip_unavailable_fragments': True,
-
         # ✅ Speed optimizations
         'concurrent_fragment_downloads': 16,
         'buffersize': 1024 * 16,
         'http_chunk_size': 10485760,
 
-        # ✅ ffmpeg faststart for faster playback
+        # ✅ ffmpeg faststart for quick playback
         'postprocessor_args': {
             'ffmpeg_mergevideo': ['-movflags', 'faststart']
         },
@@ -144,12 +148,10 @@ def download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 filepath = ydl.prepare_filename(info)
-
                 if format_type == "mp3":
                     filepath = os.path.splitext(filepath)[0] + ".mp3"
                 elif not filepath.endswith(".mp4"):
                     filepath = os.path.splitext(filepath)[0] + ".mp4"
-
                 progress_store[session_id]["filepath"] = filepath
                 progress_store[session_id]["filename"] = os.path.basename(filepath)
             progress_store[session_id]["percent"] = 100
@@ -172,8 +174,7 @@ def serve_file(session_id):
     filepath = data.get("filepath")
     if not filepath or not os.path.exists(filepath):
         abort(404, "File not found on server.")
-    filename = data.get("filename", "download")
-    return send_file(filepath, as_attachment=True, download_name=filename)
+    return send_file(filepath, as_attachment=True, download_name=data.get("filename", "download"))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
