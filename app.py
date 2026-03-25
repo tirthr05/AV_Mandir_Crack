@@ -1,13 +1,23 @@
-from flask import Flask, request, Response, render_template, jsonify
+from flask import Flask, request, Response, render_template, jsonify, send_file, abort
 import yt_dlp
 import os
+import uuid
+import threading
 
 app = Flask(__name__)
 
-USERNAME = "admin"
-PASSWORD = "admin"
+USERNAME = os.environ.get("APP_USERNAME", "admin")
+PASSWORD = os.environ.get("APP_PASSWORD", "admin")
 
-progress_data = {"percent": 0, "status": "idle"}
+progress_store: dict = {}
+
+ALLOWED_URL_PREFIXES = (
+    "https://www.youtube.com/",
+    "https://youtu.be/",
+    "https://youtube.com/",
+    "https://m.youtube.com/",
+)
+ALLOWED_QUALITIES = {"360", "480", "720", "1080", "1440", "2160"}
 
 def check_auth(username, password):
     return username == USERNAME and password == PASSWORD
@@ -25,65 +35,118 @@ def require_login():
 def home():
     return render_template("index.html")
 
-# 🔥 Progress hook
-def progress_hook(d):
-    if d['status'] == 'downloading':
-        percent = d.get('_percent_str', '0%').replace('%', '').strip()
-        try:
-            progress_data["percent"] = float(percent)
-            progress_data["status"] = "downloading"
-        except:
-            pass
-    elif d['status'] == 'finished':
-        progress_data["percent"] = 100
-        progress_data["status"] = "finished"
+def make_progress_hook(session_id):
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            raw = d.get('_percent_str', '0%').replace('%', '').strip()
+            try:
+                progress_store[session_id]["percent"] = float(raw)
+                progress_store[session_id]["status"] = "downloading"
+                progress_store[session_id]["speed"] = d.get('_speed_str', '')
+                progress_store[session_id]["eta"] = d.get('_eta_str', '')
+            except ValueError:
+                pass
+        elif d['status'] == 'finished':
+            progress_store[session_id]["percent"] = 99
+            progress_store[session_id]["status"] = "processing"
+    return progress_hook
 
-@app.route('/progress')
-def progress():
-    return jsonify(progress_data)
+@app.route('/progress/<session_id>')
+def progress(session_id):
+    data = progress_store.get(session_id, {"percent": 0, "status": "idle"})
+    return jsonify(data)
 
-# 🔐 SECRET ROUTE
-@app.route('/x9KfL2pQz/download', methods=['POST'])
+@app.route('/download', methods=['POST'])
 def download():
-    url = request.form['url']
-    format_type = request.form['format']
-    quality = request.form.get('quality')
+    url = request.form.get('url', '').strip()
+    format_type = request.form.get('format', 'mp4')
+    quality = request.form.get('quality', '1080')
 
-    progress_data["percent"] = 0
-    progress_data["status"] = "starting"
+    if not any(url.startswith(p) for p in ALLOWED_URL_PREFIXES):
+        abort(400, "URL not allowed. Only YouTube URLs are supported.")
+    if quality and quality not in ALLOWED_QUALITIES:
+        abort(400, "Invalid quality value.")
 
-    # 🎯 Dynamic format selection
-    if quality:
-        fmt = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]"
+    session_id = str(uuid.uuid4())
+    progress_store[session_id] = {
+        "percent": 0,
+        "status": "starting",
+        "speed": "",
+        "eta": "",
+        "filepath": None,
+        "filename": None,
+        "error": None
+    }
+
+    download_dir = "/tmp/downloads"
+    os.makedirs(download_dir, exist_ok=True)
+
+    if format_type == "mp3":
+        fmt = "bestaudio/best"
+    elif quality:
+        fmt = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best[height<={quality}]"
     else:
-        fmt = "best"
+        fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
     ydl_opts = {
         'format': fmt,
         'quiet': True,
-        'progress_hooks': [progress_hook],
-        'concurrent_fragment_downloads': 10,
-        'noplaylist': True
+        'no_warnings': True,
+        'progress_hooks': [make_progress_hook(session_id)],
+        'concurrent_fragment_downloads': 16,
+        'buffersize': 1024 * 16,
+        'http_chunk_size': 10485760,
+        'noplaylist': True,
+        'outtmpl': f'{download_dir}/%(title)s.%(ext)s',
+        'merge_output_format': 'mp4',
+        'postprocessor_args': ['-movflags', 'faststart'],
     }
 
     if format_type == "mp3":
-        ydl_opts.update({
-            'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }]
-        })
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }]
+        ydl_opts.pop('merge_output_format', None)
+        ydl_opts.pop('postprocessor_args', None)
 
-    def generate():
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        progress_data["status"] = "done"
-        yield b"Download complete"
+    def run():
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filepath = ydl.prepare_filename(info)
 
-    return Response(generate(), mimetype="text/plain")
+                if format_type == "mp3":
+                    filepath = os.path.splitext(filepath)[0] + ".mp3"
+                elif not filepath.endswith(".mp4"):
+                    filepath = os.path.splitext(filepath)[0] + ".mp4"
+
+                progress_store[session_id]["filepath"] = filepath
+                progress_store[session_id]["filename"] = os.path.basename(filepath)
+            progress_store[session_id]["percent"] = 100
+            progress_store[session_id]["status"] = "done"
+        except yt_dlp.utils.DownloadError as e:
+            progress_store[session_id]["status"] = "error"
+            progress_store[session_id]["error"] = str(e)
+        except Exception as e:
+            progress_store[session_id]["status"] = "error"
+            progress_store[session_id]["error"] = f"Unexpected error: {str(e)}"
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"session_id": session_id})
+
+@app.route('/file/<session_id>')
+def serve_file(session_id):
+    data = progress_store.get(session_id)
+    if not data or data.get("status") != "done":
+        abort(404, "File not ready.")
+    filepath = data.get("filepath")
+    if not filepath or not os.path.exists(filepath):
+        abort(404, "File not found on server.")
+    filename = data.get("filename", "download")
+    return send_file(filepath, as_attachment=True, download_name=filename)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(host="0.0.0.0", port=port, threaded=True)
