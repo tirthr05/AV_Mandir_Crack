@@ -84,22 +84,50 @@ def download():
     if format_type == "mp3":
         fmt = "bestaudio/best"
     elif quality:
-        fmt = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best[height<={quality}]"
+        fmt = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
     else:
-        fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+        fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
 
     ydl_opts = {
         'format': fmt,
         'quiet': True,
         'no_warnings': True,
         'progress_hooks': [make_progress_hook(session_id)],
-        'concurrent_fragment_downloads': 16,
-        'buffersize': 1024 * 16,
-        'http_chunk_size': 10485760,
         'noplaylist': True,
         'outtmpl': f'{download_dir}/%(title)s.%(ext)s',
         'merge_output_format': 'mp4',
-        'postprocessor_args': ['-movflags', 'faststart'],
+
+        # ✅ THE FIX — use web_embedded client, bypass bot detection without cookies
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['web_embedded'],
+            }
+        },
+
+        # ✅ Reconnect on drop, important for large files
+        'downloader_options': {
+            'ffmpeg_args': [
+                '-reconnect', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '5'
+            ]
+        },
+
+        # ✅ Retries on failure
+        'retries': 10,
+        'fragment_retries': 10,
+        'extractor_retries': 5,
+        'skip_unavailable_fragments': True,
+
+        # ✅ Speed optimizations
+        'concurrent_fragment_downloads': 16,
+        'buffersize': 1024 * 16,
+        'http_chunk_size': 10485760,
+
+        # ✅ ffmpeg faststart for faster playback
+        'postprocessor_args': {
+            'ffmpeg_mergevideo': ['-movflags', 'faststart']
+        },
     }
 
     if format_type == "mp3":
