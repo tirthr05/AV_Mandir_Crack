@@ -1,4 +1,4 @@
 flask
+gunicorn
 yt-dlp
-ffmpeg
 bgutil-ytdlp-pot-provider
