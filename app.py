@@ -19,8 +19,10 @@ ALLOWED_URL_PREFIXES = (
 )
 ALLOWED_QUALITIES = {"360", "480", "720", "1080", "1440", "2160"}
 
+
 def check_auth(username, password):
     return username == USERNAME and password == PASSWORD
+
 
 @app.before_request
 def require_login():
@@ -31,9 +33,11 @@ def require_login():
             {'WWW-Authenticate': 'Basic realm="Login Required"'}
         )
 
+
 @app.route('/')
 def home():
     return render_template("index.html")
+
 
 def make_progress_hook(session_id):
     def progress_hook(d):
@@ -51,10 +55,12 @@ def make_progress_hook(session_id):
             progress_store[session_id]["status"] = "processing"
     return progress_hook
 
+
 @app.route('/progress/<session_id>')
 def progress(session_id):
     data = progress_store.get(session_id, {"percent": 0, "status": "idle"})
     return jsonify(data)
+
 
 @app.route('/download', methods=['POST'])
 def download():
@@ -84,25 +90,29 @@ def download():
     if format_type == "mp3":
         fmt = "bestaudio/best"
     elif quality:
-        fmt = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
+        fmt = (
+            f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]"
+            f"/bestvideo[height<={quality}]+bestaudio"
+            f"/best[height<={quality}]"
+        )
     else:
         fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
 
     ydl_opts = {
         'format': fmt,
-        'quiet': True,
-        'no_warnings': True,
+        'quiet': False,
+        'no_warnings': False,
         'progress_hooks': [make_progress_hook(session_id)],
         'noplaylist': True,
         'outtmpl': f'{download_dir}/%(title)s.%(ext)s',
         'merge_output_format': 'mp4',
 
-        # ✅ AUTO PO TOKEN — generates fresh token per video, no cookies needed, never expires
+        # ✅ BGUtil POT provider — auto token per video, no cookies needed
         'extractor_args': {
             'youtube': {
                 'player_client': ['web'],
+                'player_skip': ['webpage'],
             },
-            # bgutil POT provider running locally on port 4416
             'youtubepot-bgutilhttp': {
                 'base_url': ['http://127.0.0.1:4416'],
             },
@@ -123,12 +133,12 @@ def download():
             ]
         },
 
-        # ✅ Speed optimizations
+        # ✅ Speed
         'concurrent_fragment_downloads': 16,
         'buffersize': 1024 * 16,
         'http_chunk_size': 10485760,
 
-        # ✅ ffmpeg faststart for quick playback
+        # ✅ Fast playback start
         'postprocessor_args': {
             'ffmpeg_mergevideo': ['-movflags', 'faststart']
         },
@@ -166,6 +176,7 @@ def download():
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"session_id": session_id})
 
+
 @app.route('/file/<session_id>')
 def serve_file(session_id):
     data = progress_store.get(session_id)
@@ -174,7 +185,12 @@ def serve_file(session_id):
     filepath = data.get("filepath")
     if not filepath or not os.path.exists(filepath):
         abort(404, "File not found on server.")
-    return send_file(filepath, as_attachment=True, download_name=data.get("filename", "download"))
+    return send_file(
+        filepath,
+        as_attachment=True,
+        download_name=data.get("filename", "download")
+    )
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
