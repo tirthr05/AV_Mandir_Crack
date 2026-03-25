@@ -1,3 +1,4 @@
 flask
 yt-dlp
 ffmpeg
+bgutil-ytdlp-pot-provider
