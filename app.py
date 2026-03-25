@@ -1,15 +1,13 @@
-from flask import Flask, request, send_file, render_template, Response, jsonify
+from flask import Flask, request, Response, render_template, jsonify
 import yt_dlp
 import os
 
 app = Flask(__name__)
-DOWNLOAD_FOLDER = "downloads"
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 USERNAME = "admin"
 PASSWORD = "admin"
 
-progress_data = {"percent": 0}
+progress_data = {"percent": 0, "status": "idle"}
 
 def check_auth(username, password):
     return username == USERNAME and password == PASSWORD
@@ -33,8 +31,12 @@ def progress_hook(d):
         percent = d.get('_percent_str', '0%').replace('%', '').strip()
         try:
             progress_data["percent"] = float(percent)
+            progress_data["status"] = "downloading"
         except:
-            progress_data["percent"] = 0
+            pass
+    elif d['status'] == 'finished':
+        progress_data["percent"] = 100
+        progress_data["status"] = "finished"
 
 @app.route('/progress')
 def progress():
@@ -47,18 +49,21 @@ def download():
     format_type = request.form['format']
     quality = request.form.get('quality')
 
-    # 🎯 Dynamic resolution (NOT hardcoded exact match)
+    progress_data["percent"] = 0
+    progress_data["status"] = "starting"
+
+    # 🎯 Dynamic format selection
     if quality:
         fmt = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]"
     else:
         fmt = "best"
 
     ydl_opts = {
-        'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
-        'noplaylist': True,
-        'concurrent_fragment_downloads': 10,
+        'format': fmt,
+        'quiet': True,
         'progress_hooks': [progress_hook],
-        'quiet': True
+        'concurrent_fragment_downloads': 10,
+        'noplaylist': True
     }
 
     if format_type == "mp3":
@@ -70,22 +75,14 @@ def download():
                 'preferredquality': '192',
             }]
         })
-    else:
-        ydl_opts.update({'format': fmt})
 
-    try:
+    def generate():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+            ydl.download([url])
+        progress_data["status"] = "done"
+        yield b"Download complete"
 
-            if format_type == "mp3":
-                filename = os.path.splitext(filename)[0] + ".mp3"
-
-        progress_data["percent"] = 100
-        return send_file(filename, as_attachment=True)
-
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return Response(generate(), mimetype="text/plain")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
